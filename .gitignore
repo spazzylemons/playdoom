@@ -1,0 +1,9 @@
+.vscode
+*.wad
+PlayDoom.pdx/
+pdex.bin
+pdex.dylib
+pdex.so
+pdex.dll
+pdex.elf
+build/
