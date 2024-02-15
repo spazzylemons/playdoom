@@ -22,8 +22,6 @@
 
 #include "doomtype.h"
 
-#define SND_SAMPLERATE 44100
-
 // so that the individual game logic and sound driver code agree
 #define NORM_PITCH 127
 
@@ -82,70 +80,6 @@ typedef struct
 
 } musicinfo_t;
 
-typedef enum 
-{
-    SNDDEVICE_NONE = 0,
-    SNDDEVICE_PCSPEAKER = 1,
-    SNDDEVICE_ADLIB = 2,
-    SNDDEVICE_SB = 3,
-    SNDDEVICE_PAS = 4,
-    SNDDEVICE_GUS = 5,
-    SNDDEVICE_WAVEBLASTER = 6,
-    SNDDEVICE_SOUNDCANVAS = 7,
-    SNDDEVICE_GENMIDI = 8,
-    SNDDEVICE_AWE32 = 9,
-    SNDDEVICE_CD = 10,
-} snddevice_t;
-
-// Interface for sound modules
-
-typedef struct
-{
-    // List of sound devices that this sound module is used for.
-
-    snddevice_t *sound_devices;
-    int num_sound_devices;
-
-    // Initialise sound module
-    // Returns true if successfully initialised
-
-    boolean (*Init)(boolean use_sfx_prefix);
-
-    // Shutdown sound module
-
-    void (*Shutdown)(void);
-
-    // Returns the lump index of the given sound.
-
-    int (*GetSfxLumpNum)(sfxinfo_t *sfxinfo);
-
-    // Called periodically to update the subsystem.
-
-    void (*Update)(void);
-
-    // Update the sound settings on the given channel.
-
-    void (*UpdateSoundParams)(int channel, int vol, int sep);
-
-    // Start a sound on a given channel.  Returns the channel id
-    // or -1 on failure.
-
-    int (*StartSound)(sfxinfo_t *sfxinfo, int channel, int vol, int sep, int pitch);
-
-    // Stop the sound playing on the given channel.
-
-    void (*StopSound)(int channel);
-
-    // Query if a sound is playing on the given channel
-
-    boolean (*SoundIsPlaying)(int channel);
-
-    // Called on startup to precache sound effects (if necessary)
-
-    void (*CacheSounds)(sfxinfo_t *sounds, int num_sounds);
-
-} sound_module_t;
-
 void I_InitSound(boolean use_sfx_prefix);
 void I_ShutdownSound(void);
 int I_GetSfxLumpNum(sfxinfo_t *sfxinfo);
@@ -155,61 +89,6 @@ int I_StartSound(sfxinfo_t *sfxinfo, int channel, int vol, int sep, int pitch);
 void I_StopSound(int channel);
 boolean I_SoundIsPlaying(int channel);
 void I_PrecacheSounds(sfxinfo_t *sounds, int num_sounds);
-
-// Interface for music modules
-
-typedef struct
-{
-    // List of sound devices that this music module is used for.
-
-    snddevice_t *sound_devices;
-    int num_sound_devices;
-
-    // Initialise the music subsystem
-
-    boolean (*Init)(void);
-
-    // Shutdown the music subsystem
-
-    void (*Shutdown)(void);
-
-    // Set music volume - range 0-127
-
-    void (*SetMusicVolume)(int volume);
-
-    // Pause music
-
-    void (*PauseMusic)(void);
-
-    // Un-pause music
-
-    void (*ResumeMusic)(void);
-
-    // Register a song handle from data
-    // Returns a handle that can be used to play the song
-
-    void *(*RegisterSong)(void *data, int len);
-
-    // Un-register (free) song data
-
-    void (*UnRegisterSong)(void *handle);
-
-    // Play the song
-
-    void (*PlaySong)(void *handle, boolean looping);
-
-    // Stop playing the current song.
-
-    void (*StopSong)(void);
-
-    // Query if music is playing.
-
-    boolean (*MusicIsPlaying)(void);
-
-    // Invoked periodically to poll.
-
-    void (*Poll)(void);
-} music_module_t;
 
 void I_InitMusic(void);
 void I_ShutdownMusic(void);
@@ -225,15 +104,6 @@ boolean I_MusicIsPlaying(void);
 extern int snd_pitchshift;
 
 void I_BindSoundVariables(void);
-
-// DMX version to emulate for OPL emulation:
-typedef enum {
-    opl_doom1_1_666,    // Doom 1 v1.666
-    opl_doom2_1_666,    // Doom 2 v1.666
-    opl_doom_1_9        // Doom v1.9
-} opl_driver_ver_t;
-
-void I_SetOPLDriverVer(opl_driver_ver_t ver);
 
 #endif
 

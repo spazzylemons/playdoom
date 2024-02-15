@@ -27,6 +27,28 @@
 #include "w_wad.h"
 #include "z_zone.h"
 
+#define TSF_IMPLEMENTATION
+#define TSF_STATIC
+
+#define TSF_MALLOC(size) Z_Malloc(size, PU_STATIC, 0)
+#define TSF_REALLOC Z_Realloc
+#define TSF_FREE Z_Free
+
+#include "tsf.h"
+
+#define TML_IMPLEMENTATION
+#define TML_STATIC
+#define TML_NO_STDIO
+
+#define TML_MALLOC(size) Z_Malloc(size, PU_STATIC, 0)
+#define TML_REALLOC Z_Realloc
+#define TML_FREE Z_Free
+
+#include "tml.h"
+
+#include "memio.h"
+#include "mus2mid.h"
+
 #include "playdate.h"
 
 // Whether to vary the pitch of sound effects
@@ -34,37 +56,53 @@
 
 int snd_pitchshift = -1;
 
-// Low-level sound and music modules we are using
+#define MAXMIDLENGTH (96 * 1024)
 
-static music_module_t *music_module;
+#define MIXING_FREQ TSF_SAMPLERATE
+#define RING_BUFFER_SIZE 4096
 
-// Sound modules
-extern music_module_t music_sf2_module;
+static int16_t ring_buffer[RING_BUFFER_SIZE];
+static uint16_t ring_write = RING_BUFFER_SIZE / 2;
+static uint16_t ring_read = 0;
 
-// For OPL module:
+static tsf *soundfont;
+static tml_message *current_song;
+static tml_message *current_message;
+static boolean should_loop;
+static boolean is_paused;
+static float msec;
 
-extern opl_driver_ver_t opl_drv_ver;
+static SoundSource *music_source;
 
 typedef struct {
     SamplePlayer *player;
     sfxinfo_t *sfxinfo;
 } channel_t;
 
-#define NUM_CHANNELS 8
-static channel_t channels[NUM_CHANNELS];
-
-// Compiled-in music modules:
-
-static music_module_t *music_modules[] =
-{
-    &music_sf2_module,
-    NULL,
-};
-
 typedef struct driver_data_s {
     int use_count;
     AudioSample *sample;
 } driver_data_t;
+
+#define NUM_CHANNELS 8
+static channel_t channels[NUM_CHANNELS];
+
+static int SoundCallback(void *userdata, int16_t *left, int16_t *right, int length) {
+    length /= 4;
+
+    while (length-- > 0) {
+        // Check if we exhausted the buffer
+        if (ring_read == ring_write)
+            return 0;
+
+        for (int i = 0; i < 4; i++)
+            *left++ = ring_buffer[ring_read];
+
+        ring_read = (ring_read + 1) & (RING_BUFFER_SIZE - 1);
+    }
+
+    return 1;
+}
 
 static boolean CacheSFX(sfxinfo_t *sfxinfo)
 {
@@ -75,7 +113,7 @@ static boolean CacheSFX(sfxinfo_t *sfxinfo)
     byte *data;
 
     if (sfxinfo->driver_data != NULL) {
-        ++((driver_data_t *) sfxinfo->driver_data)->use_count;
+        ++sfxinfo->driver_data->use_count;
         return true;
     }
 
@@ -136,47 +174,6 @@ static boolean CacheSFX(sfxinfo_t *sfxinfo)
     return true;
 }
 
-// Check if a sound device is in the given list of devices
-
-static boolean SndDeviceInList(snddevice_t device, snddevice_t *list,
-                               int len)
-{
-    int i;
-
-    for (i=0; i<len; ++i)
-    {
-        if (device == list[i])
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-// Initialize music.
-
-static void InitMusicModule(void)
-{
-    int i;
-
-    music_module = NULL;
-
-    for (i=0; music_modules[i] != NULL; ++i)
-    {
-        // Is the music device in the list of devices supported
-        // by this module?
-
-        // Initialize the module
-
-        if (music_modules[i]->Init())
-        {
-            music_module = music_modules[i];
-            return;
-        }
-    }
-}
-
 //
 // Initializes sound stuff, including volume
 // Sets channels, SFX and music volume,
@@ -184,10 +181,7 @@ static void InitMusicModule(void)
 //
 
 void I_InitSound(boolean use_sfx_prefix)
-{  
-
-    InitMusicModule();
-
+{
     for (int i = 0; i < NUM_CHANNELS; i++) {
         channels[i].player = playdate->sound->sampleplayer->newPlayer();
         channels[i].sfxinfo = NULL;
@@ -196,9 +190,8 @@ void I_InitSound(boolean use_sfx_prefix)
 
 void I_ShutdownSound(void)
 {
-    if (music_module != NULL)
-    {
-        music_module->Shutdown();
+    for (int i = 0; i < NUM_CHANNELS; i++) {
+        playdate->sound->sampleplayer->freePlayer(channels[i].player);
     }
 }
 
@@ -328,82 +321,178 @@ void I_PrecacheSounds(sfxinfo_t *sounds, int num_sounds)
 
 void I_InitMusic(void)
 {
+    soundfont = tsf_load_filename("gm.sf2");
+    if (soundfont != NULL)
+        music_source = playdate->sound->addSource(SoundCallback, NULL, 0);
 }
 
 void I_ShutdownMusic(void)
 {
+    if (soundfont != NULL) {
+        playdate->sound->removeSource(music_source);
+        playdate->system->realloc(music_source, 0);
 
+        tsf_close(soundfont);
+    }
 }
 
 void I_SetMusicVolume(int volume)
 {
-    if (music_module != NULL)
-    {
-        music_module->SetMusicVolume(volume);
-    }
+    if (soundfont != NULL)
+        tsf_set_volume(soundfont, volume / 127.0f);
 }
 
 void I_PauseSong(void)
 {
-    if (music_module != NULL)
-    {
-        music_module->PauseMusic();
-    }
+    is_paused = true;
 }
 
 void I_ResumeSong(void)
 {
-    if (music_module != NULL)
-    {
-        music_module->ResumeMusic();
+    is_paused = false;
+}
+
+static boolean IsMid(byte *mem, int len) {
+    return len > 4 && !memcmp(mem, "MThd", 4);
+}
+
+static MEMFILE *ConvertMus(byte *musdata, int len)
+{
+    MEMFILE *instream;
+    MEMFILE *outstream;
+    int result;
+
+    instream = mem_fopen_read(musdata, len);
+    outstream = mem_fopen_write();
+
+    result = mus2mid(instream, outstream);
+    mem_fclose(instream);
+
+    if (result) {
+        mem_fclose(outstream);
+        return NULL;
     }
+
+    return outstream;
 }
 
 void *I_RegisterSong(void *data, int len)
 {
-    if (music_module != NULL)
-    {
-        return music_module->RegisterSong(data, len);
+    tml_message *result = NULL;
+
+    if (!IsMid(data, len) || len >= MAXMIDLENGTH) {
+        MEMFILE *outstream = ConvertMus(data, len);
+
+        if (outstream == NULL) {
+            result = NULL;
+        } else {
+            void *outbuf;
+            size_t outsize;
+            mem_get_buf(outstream, &outbuf, &outsize);
+            result = tml_load_memory(outbuf, outsize);
+            mem_fclose(outstream);
+        }
+    } else {
+        result = tml_load_memory(data, len);
     }
-    else
-    {
-        return NULL;
+
+    if (result == NULL) {
+        printf("I_RegisterSong: Failed to load MID.\n");
     }
+
+    return result;
 }
 
 void I_UnRegisterSong(void *handle)
 {
-    if (music_module != NULL)
-    {
-        music_module->UnRegisterSong(handle);
+    if (handle != NULL) {
+        tml_free(handle);
     }
 }
 
 void I_PlaySong(void *handle, boolean looping)
 {
-    if (music_module != NULL)
+    if (soundfont != NULL && handle != NULL)
     {
-        music_module->PlaySong(handle, looping);
+        I_StopSong();
+
+        current_song = current_message = handle;
+        should_loop = looping;
+        msec = 0.0f;
     }
 }
 
 void I_StopSong(void)
 {
-    if (music_module != NULL)
-    {
-        music_module->StopSong();
+    if (current_song != NULL) {
+        current_song = current_message = NULL;
+
+        tsf_reset(soundfont);
     }
 }
 
 boolean I_MusicIsPlaying(void)
 {
-    if (music_module != NULL)
-    {
-        return music_module->MusicIsPlaying();
+    return current_message != NULL;
+}
+
+static void FillBuffer(int nsamples) {
+    if (current_song == NULL)
+        return;
+
+    //Number of samples to process
+    while (nsamples > 0) {
+        //Loop through all MIDI messages which need to be played up until the current playback time
+        msec += TSF_RENDER_EFFECTSAMPLEBLOCK * (1000.0f / TSF_SAMPLERATE);
+        for (;;) {
+            if (current_message == NULL) {
+                if (should_loop) {
+                    current_message = current_song;
+                    msec = 0.0f;
+                } else {
+                    break;
+                }
+            }
+
+            if (msec < current_message->time)
+                break;
+
+            switch (current_message->type)
+            {
+                case TML_PROGRAM_CHANGE: //channel program (preset) change (special handling for 10th MIDI channel with drums)
+                    tsf_channel_set_presetnumber(soundfont, current_message->channel, current_message->program, (current_message->channel == 9));
+                    break;
+                case TML_NOTE_ON: //play a note
+                    tsf_channel_note_on(soundfont, current_message->channel, current_message->key, current_message->velocity / 127.0f);
+                    break;
+                case TML_NOTE_OFF: //stop a note
+                    tsf_channel_note_off(soundfont, current_message->channel, current_message->key);
+                    break;
+                case TML_PITCH_BEND: //pitch wheel modification
+                    tsf_channel_set_pitchwheel(soundfont, current_message->channel, current_message->pitch_bend);
+                    break;
+                case TML_CONTROL_CHANGE: //MIDI controller messages
+                    tsf_channel_midi_control(soundfont, current_message->channel, current_message->control, current_message->control_value);
+                    break;
+            }
+
+            current_message = current_message->next;
+        }
+
+        tsf_render_short(soundfont, &ring_buffer[ring_write]);
+        nsamples -= TSF_RENDER_EFFECTSAMPLEBLOCK;
+        ring_write = (ring_write + TSF_RENDER_EFFECTSAMPLEBLOCK) & (RING_BUFFER_SIZE - 1);
     }
-    else
-    {
-        return false;
+}
+
+void UpdateMusic(void) {
+    if (is_paused) {
+        return;
+    }
+
+    uint16_t new_ring_write = (ring_read + (RING_BUFFER_SIZE / 2) - ring_write) & (RING_BUFFER_SIZE - 1);
+    if (new_ring_write > 0) {
+        FillBuffer(new_ring_write);
     }
 }
 
