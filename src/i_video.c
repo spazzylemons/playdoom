@@ -154,7 +154,6 @@ void I_InitGraphics(void)
     // finally rendered into our window or full screen in I_FinishUpdate().
 
     I_VideoBuffer = playdate->graphics->getFrame();
-    playdate->display->setRefreshRate(35.0f);
     V_RestoreBuffer();
 
     // Clear the screen to black.

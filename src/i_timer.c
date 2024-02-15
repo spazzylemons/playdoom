@@ -56,9 +56,3 @@ int I_GetTimeMS(void)
 
     return ticks - basetime;
 }
-
-
-void I_InitTimer(void)
-{
-}
-

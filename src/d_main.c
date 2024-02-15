@@ -333,7 +333,7 @@ void D_BindVariables(void)
     M_CheckUnboundConfig();
 }
 
-void D_DoomLoop(void)
+void D_DoomMain10(void)
 {
     if (demorecording)
 	G_BeginRecording ();
@@ -1094,9 +1094,6 @@ void D_DoomMain1 (void)
     // Load PWAD files.
     modifiedgame = W_ParseCommandLine();
 
-    // Debug:
-//    W_PrintDirectory();
-
     //!
     // @arg <demo>
     // @category demo
@@ -1205,15 +1202,14 @@ void D_DoomMain1 (void)
 }
 
 void D_DoomMain2(void) {
-    int p;
-
-    printf("I_Init: Setting up machine state.\n");
-    I_InitTimer();
     I_InitSound(true);
-    I_InitMusic();
 }
 
 void D_DoomMain3(void) {
+    I_InitMusic();
+}
+
+void D_DoomMain4(void) {
     int p;
 
     // Initial netgame startup. Connect to server etc.
@@ -1340,23 +1336,27 @@ void D_DoomMain3(void) {
         // Not loading a game
         startloadgame = -1;
     }
-}
 
-void D_DoomMain4(void) {
     printf("M_Init: Init miscellaneous info.\n");
     M_Init ();
+}
 
+void D_DoomMain5(void) {
     printf("R_Init: Init DOOM refresh daemon - ");
     R_Init ();
+}
 
+void D_DoomMain6(void) {
     printf("\nP_Init: Init Playloop state.\n");
     P_Init ();
+}
 
+void D_DoomMain7(void) {
     printf("S_Init: Setting up sound.\n");
     S_Init (sfxVolume * 8, musicVolume * 8);
 }
 
-void D_DoomMain5(void) {
+void D_DoomMain8(void) {
     printf("D_CheckNetGame: Checking network game status.\n");
     D_CheckNetGame ();
 
@@ -1369,7 +1369,7 @@ void D_DoomMain5(void) {
     ST_Init ();
 }
 
-void D_DoomMain6(void)  {
+void D_DoomMain9(void)  {
     int p;
 
     // If Doom II without a MAP01 lump, this is a store demo.
@@ -1400,7 +1400,6 @@ void D_DoomMain6(void)  {
     {
 	singledemo = true;              // quit after one demo
 	G_DeferedPlayDemo (demolumpname);
-	D_DoomLoop ();  // never returns
     return;
     }
 	
@@ -1408,7 +1407,6 @@ void D_DoomMain6(void)  {
     if (p)
     {
 	G_TimeDemo (demolumpname);
-	D_DoomLoop ();  // never returns
     return;
     }
 	
@@ -1425,8 +1423,5 @@ void D_DoomMain6(void)  {
 	else
 	    D_StartTitle ();                // start up intro loop
     }
-
-    D_DoomLoop ();  // never returns
-    return;
 }
 

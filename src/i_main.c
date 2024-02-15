@@ -83,20 +83,91 @@ static boolean check_key_repeat(int key) {
     return keyrepeat_timers[key] == 0 || keyrepeat_timers[key] == TIMER_REPEAT;
 }
 
+static void DrawCenteredText(const char *text, int x, int y, int w) {
+    int length = strlen(text);
+    int width = playdate->graphics->getTextWidth(font, text, length, kUTF8Encoding, 0);
+    playdate->graphics->drawText(text, length, kUTF8Encoding, x + (w - width) / 2, y);
+}
+
+static void DrawCenteredLine(const char *text, int y) {
+    DrawCenteredText(text, 0, y, LCD_COLUMNS);
+}
+
+static boolean RunInit(void) {
+    typedef struct {
+        void (*action)(void);
+        const char *description;
+    } init_func_t;
+
+    // Split the main init into a LOT of smaller functions so we don't get watchdog'd
+    void D_DoomMain1(void);
+    void D_DoomMain2(void);
+    void D_DoomMain3(void);
+    void D_DoomMain4(void);
+    void D_DoomMain5(void);
+    void D_DoomMain6(void);
+    void D_DoomMain7(void);
+    void D_DoomMain8(void);
+    void D_DoomMain9(void);
+    void D_DoomMain10(void);
+
+    static const init_func_t initRoutines[] = {
+        { D_DoomMain1, "General initialization..." },
+        { D_DoomMain2, "Loading sounds..." },
+        { D_DoomMain3, "Loading music..." },
+        { D_DoomMain4, "Various configuration..." },
+        { D_DoomMain5, "Initializing renderer..." },
+        { D_DoomMain6, "Initializing playloop..." },
+        { D_DoomMain7, "Setting up sound engine..." },
+        { D_DoomMain8, "Setting up UI..." },
+        { D_DoomMain9, "Finishing up..." },
+        { D_DoomMain10, "" },
+    };
+
+    static const int numInitRoutines = arrlen(initRoutines);
+    static int initIndex = 0;
+
+    if (initIndex == numInitRoutines) {
+        return false;
+    } else {
+        // Print what we're doing, with a progress bar.
+        const char *message = initRoutines[initIndex].description;
+
+        playdate->graphics->clear(kColorWhite);
+        DrawCenteredLine("Loading, this may take a while.", 80);
+        DrawCenteredLine(message, 100);
+
+        // progress of loading.
+        playdate->graphics->fillRect(0, 120, (initIndex * LCD_COLUMNS) / numInitRoutines, 20, kColorBlack);
+
+        // Render now!
+        playdate->graphics->display();
+
+        initRoutines[initIndex].action();
+        ++initIndex;
+
+        // If we're done, we should replace the currently loaded font with the
+        // one used for the cheat module.
+        if (initIndex == numInitRoutines) {
+            playdate->system->realloc(font, 0);
+            font = playdate->graphics->loadFont("/System/Fonts/Roobert-24-Medium", NULL);
+            playdate->graphics->setFont(font);
+        }
+
+        return true;
+    }
+}
+
 static void draw_cheat(void) {
     playdate->graphics->pushContext(NULL);
     playdate->graphics->fillRect(0, 0, LCD_COLUMNS, CHAR_WIDTH * 2, kColorBlack);
-    playdate->graphics->setFont(font);
     playdate->graphics->setDrawMode(kDrawModeFillWhite);
 
     int x = (LCD_COLUMNS / 2) - (CHAR_WIDTH / 2) - cheat_scroll - FULL_WIDTH;
     for (int i = 0; i < 2 * NUM_CHARS + 6; i++) {
         if (x >= -CHAR_WIDTH && x < LCD_COLUMNS) {
             const char *character = &characters[(i + NUM_CHARS) % NUM_CHARS][0];
-            int length = strlen(character);
-
-            int width = playdate->graphics->getTextWidth(font, character, length, kUTF8Encoding, 0);
-            playdate->graphics->drawText(character, length, kUTF8Encoding, x + (CHAR_WIDTH - width) / 2, 0);
+            DrawCenteredText(character, x, 0, CHAR_WIDTH);
         }
         x += CHAR_WIDTH;
     }
@@ -139,9 +210,8 @@ static void draw_cheat(void) {
     playdate->graphics->fillRect(((LCD_COLUMNS - CHAR_WIDTH) / 2), 0, CHAR_WIDTH, CHAR_WIDTH, kColorXOR);
 
     char buf[MAX_CHEAT_LEN + 2];
-    int length = snprintf(buf, sizeof(buf), "%.*s|", cheat_length, last_cheat);
-    int width = playdate->graphics->getTextWidth(font, buf, length, kASCIIEncoding, 0);
-    playdate->graphics->drawText(buf, length, kASCIIEncoding, (LCD_COLUMNS - width) / 2, 36);
+    snprintf(buf, sizeof(buf), "%.*s|", cheat_length, last_cheat);
+    DrawCenteredLine(buf, 36);
 
     if (check_key_repeat(PDKEY_FIRE)) {
         S_StartSound(NULL, sfx_pistol);
@@ -173,46 +243,16 @@ static void draw_cheat(void) {
     playdate->graphics->popContext();
 }
 
-// Split the main init into a LOT of smaller functions so we don't get watchdog'd
-void D_DoomMain1 (void);
-void D_DoomMain2 (void);
-void D_DoomMain3 (void);
-void D_DoomMain4 (void);
-void D_DoomMain5 (void);
-void D_DoomMain6 (void);
-
 void D_DoomLoopRun (void);
 
 static int the_argc = 1;
 static char *the_argv[] = {"doom", NULL};
 
-static int init_phase = 0;
-
 static int update(void *userdata) {
     (void) userdata;
 
-    switch (init_phase++) {
-        case 0:
-            D_DoomMain1();
-            goto end;
-        case 1:
-            D_DoomMain2();
-            goto end;
-        case 2:
-            D_DoomMain3();
-            goto end;
-        case 3:
-            D_DoomMain4();
-            goto end;
-        case 4:
-            D_DoomMain5();
-            goto end;
-        case 5:
-            D_DoomMain6();
-            goto end;
-        default:
-            init_phase = 6;
-            break;
+    if (RunInit()) {
+        goto end;
     }
 
     D_DoomLoopRun();
@@ -253,7 +293,12 @@ int eventHandler(PlaydateAPI *pd, PDSystemEvent event, uint32_t arg) {
         myargc = the_argc;
         myargv = the_argv;
 
-        font = playdate->graphics->loadFont("/System/Fonts/Roobert-24-Medium", NULL);
+        playdate->display->setRefreshRate(TICRATE);
+
+        // Load a smaller font for the initialization screen.
+        font = playdate->graphics->loadFont("/System/Fonts/Asheville-Sans-14-Bold", NULL);
+        playdate->graphics->setFont(font);
+
         playdate->system->setUpdateCallback(update, NULL);
         playdate->system->addMenuItem("open menu", game_menu, NULL);
         playdate->system->addMenuItem("enter cheat", init_cheat, NULL);
