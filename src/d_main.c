@@ -49,6 +49,7 @@
 #include "m_menu.h"
 #include "p_saveg.h"
 
+#include "i_cheat.h"
 #include "i_input.h"
 #include "i_system.h"
 #include "i_timer.h"
@@ -154,7 +155,6 @@ extern  int             showMessages;
 void R_ExecuteSetViewSize (void);
 
 boolean is_wiping = false;
-boolean entering_cheat = false;
 boolean cheat_redraw = false;
 
 void D_Display (void)
@@ -187,8 +187,6 @@ void D_Display (void)
     }
 
     if (cheat_redraw) {
-        void ST_doRefresh(void);
-
         oldgamestate = -1;
         cheat_redraw = false;
     }
@@ -365,8 +363,7 @@ void D_DoomLoopRun(void)
         // Send inputs to cheat handler
         event_t *event;
         while ((event = D_PopEvent())) {
-            extern void handle_cheat_input(event_t *);
-            handle_cheat_input(event);
+            I_CheatResponder(event);
         }
     }
 

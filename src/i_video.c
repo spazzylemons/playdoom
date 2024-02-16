@@ -36,23 +36,16 @@
 #include "playdate.h"
 
 // The screen buffer; this is modified to draw things to the screen
-
 pixel_t *I_VideoBuffer = NULL;
 
-// Window resize state.
-
-static boolean need_resize = false;
-static unsigned int last_resize_time;
-
-// Joystick/gamepad hysteresis
-unsigned int joywait = 0;
+// Loaded font.
+static LCDFont *font = NULL;
 
 //
 // I_StartFrame
 //
 void I_StartFrame (void)
 {
-    I_VideoBuffer = playdate->graphics->getFrame();
 }
 
 //
@@ -147,16 +140,31 @@ void I_InitGraphics(void)
     doompal = W_CacheLumpName("PLAYPAL", PU_CACHE);
     I_SetPalette(doompal);
 
-
-    // The actual 320x200 canvas that we draw to. This is the pixel buffer of
-    // the 8-bit paletted screen buffer that gets blit on an intermediate
-    // 32-bit RGBA screen buffer that gets loaded into a texture that gets
-    // finally rendered into our window or full screen in I_FinishUpdate().
-
     I_VideoBuffer = playdate->graphics->getFrame();
     V_RestoreBuffer();
 
     // Clear the screen to black.
 
     memset(I_VideoBuffer, 0, SCREENSTRIDE * SCREENHEIGHT);
+}
+
+// Load Playdate font.
+void I_LoadFont(const char *path) {
+    if (font != NULL) {
+        playdate->system->realloc(font, 0);
+    }
+    font = playdate->graphics->loadFont(path, NULL);
+    playdate->graphics->setFont(font);
+}
+
+// Draw centered text.
+void I_DrawText(const char *text, int x, int y, int w) {
+    int length = strlen(text);
+    int width = playdate->graphics->getTextWidth(font, text, length, kUTF8Encoding, 0);
+    playdate->graphics->drawText(text, length, kUTF8Encoding, x + (w - width) / 2, y);
+}
+
+// Draw centered line.
+void I_DrawLine(const char *text, int y) {
+    I_DrawText(text, 0, y, LCD_COLUMNS);
 }

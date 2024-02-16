@@ -65,9 +65,15 @@ void I_StartFrame (void);
 
 void I_StartTic (void);
 
-extern pixel_t *I_VideoBuffer;
+// Playdate video routines shared by loading screen and cheat screen.
 
-// Joystic/gamepad hysteresis
-extern unsigned int joywait;
+// Load Playdate font.
+void I_LoadFont(const char *path);
+// Draw centered text.
+void I_DrawText(const char *text, int x, int y, int w);
+// Draw centered line.
+void I_DrawLine(const char *text, int y);
+
+extern pixel_t *I_VideoBuffer;
 
 #endif

@@ -13,7 +13,7 @@
 // GNU General Public License for more details.
 //
 // DESCRIPTION:
-//     SDL implementation of system-specific input interface.
+//     Input handling.
 //
 
 
@@ -26,24 +26,17 @@
 
 #include "playdate.h"
 
-// If true, I_StartTextInput() has been called, and we are populating
-// the data3 field of ev_keydown events.
-static boolean text_input_enabled = true;
+static uint8_t buttonsdown = 0;
+static uint16_t current_state = 0;
+static uint16_t previous_state = 0;
 
-// Bit mask of mouse button state.
-static unsigned int mouse_button_state = 0;
-
-static boolean sdl_keysdown[6] = {0,0,0,0,0,0};
-static boolean current_state[11] = {0,0,0,0,0,0,0,0,0,0,0};
-static boolean previous_state[11] = {0,0,0,0,0,0,0,0,0,0,0};
-
-static uint8_t buttonmap[6] = {
-    PDKEY_LEFT - 1,
-    PDKEY_RIGHT - 1,
-    PDKEY_UP - 1,
-    PDKEY_DOWN - 1,
-    PDKEY_BACK - 1,
-    PDKEY_FIRE - 1,
+static uint8_t buttonmasks[6] = {
+    1 << (PDKEY_LEFT - 1),
+    1 << (PDKEY_RIGHT - 1),
+    1 << (PDKEY_UP - 1),
+    1 << (PDKEY_DOWN - 1),
+    1 << (PDKEY_BACK - 1),
+    1 << (PDKEY_FIRE - 1),
 };
 
 extern boolean entering_cheat;
@@ -56,29 +49,43 @@ void I_ReadButtons(void)
     playdate->system->getButtonState(&buttons, NULL, NULL);
 
     for (int i = 0; i < 6; i++) {
-        sdl_keysdown[buttonmap[i]] = !!(buttons & (1 << i));
+        if (buttons & (1 << i)) {
+            buttonsdown |= buttonmasks[i];
+        } else {
+            buttonsdown &= ~buttonmasks[i];
+        }
     }
 
     for (int i = 0; i < 5; i++) {
-        current_state[i] = sdl_keysdown[i] && !sdl_keysdown[5];
-        current_state[i + 6] = sdl_keysdown[i] && sdl_keysdown[5];
+        if ((buttonsdown & (1 << i)) && !(buttonsdown & (1 << 5))) {
+            current_state |= 1 << i;
+        } else {
+            current_state &= ~(1 << i);
+        }
+
+        if ((buttonsdown & (1 << i)) && (buttonsdown & (1 << 5))) {
+            current_state |= 1 << (i + 6);
+        } else {
+            current_state &= ~(1 << (i + 6));
+        }
     }
-    current_state[5] = sdl_keysdown[5];
+    current_state &= ~(1 << 5);
+    current_state |= buttonsdown & (1 << 5);
 
     for (int i = 0; i < 11; i++) {
-        if (current_state[i] && !previous_state[i]) {
+        if ((current_state & (1 << i)) && !(previous_state & (1 << i))) {
             event.type = ev_keydown;
             event.data2 = event.data1 = i + 1;
             event.data3 = 0;
             D_PostEvent(&event);
-        } else if (!current_state[i] && previous_state[i]) {
+        } else if (!(current_state & (1 << i)) && (previous_state & (1 << i))) {
             event.type = ev_keyup;
             event.data1 = i + 1;
             event.data2 = event.data3 = 0;
             D_PostEvent(&event);
         }
-        previous_state[i] = current_state[i];
     }
+    previous_state = current_state;
 }
 
 //
@@ -101,7 +108,7 @@ void I_ReadMouse(void)
     if (x != 0 || y != 0) 
     {
         ev.type = ev_mouse;
-        ev.data1 = mouse_button_state;
+        ev.data1 = 0;
         ev.data2 = x;
         ev.data3 = 0;
 
