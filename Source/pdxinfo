@@ -2,4 +2,6 @@ name=PlayDoom
 author=spazzylemons
 description=Doom port to playdate based on Chocolate Doom
 bundleID=me.spazzylemons.playdoom
-imagePath=
+imagePath=images
+contentWarning=This game contains mild bloodshed and gore.
+launchSoundPath=launch.wav
