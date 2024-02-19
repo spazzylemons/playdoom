@@ -1317,15 +1317,6 @@ boolean M_Responder (event_t* ev)
 	}
 	return true;
     }
-    else if (key == KEY_MENU_ACTIVATE)
-    {
-        // Deactivate menu
-
-	currentMenu->lastOn = itemOn;
-	M_ClearMenus ();
-	S_StartSound(NULL,sfx_swtchx);
-	return true;
-    }
     else if (key == KEY_MENU_BACK)
     {
         // Go back to previous menu
@@ -1336,7 +1327,12 @@ boolean M_Responder (event_t* ev)
 	    currentMenu = currentMenu->prevMenu;
 	    itemOn = currentMenu->lastOn;
 	    S_StartSound(NULL,sfx_swtchn);
-	}
+	} else {
+        currentMenu->lastOn = itemOn;
+        M_ClearMenus ();
+        S_StartSound(NULL,sfx_swtchx);
+        return true;
+    }
 	return true;
     }
 
