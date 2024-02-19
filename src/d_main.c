@@ -327,8 +327,8 @@ void D_BindVariables(void)
     M_BindIntVariable("detaillevel",            &detailLevel);
     M_BindIntVariable("snd_channels",           &snd_channels);
 
-    extern void M_CheckUnboundConfig(void);
-    M_CheckUnboundConfig();
+    // extern void M_CheckUnboundConfig(void);
+    // M_CheckUnboundConfig();
 }
 
 void D_DoomMain10(void)

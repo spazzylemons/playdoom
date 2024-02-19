@@ -80,11 +80,11 @@ static channel_t *channels;
 // Maximum volume of a sound effect.
 // Internal default is max out of 0-15.
 
-int sfxVolume = 8;
+int sfxVolume = 15;
 
 // Maximum volume of music.
 
-int musicVolume = 8;
+int musicVolume = 15;
 
 // Internal volume level, ranging from 0-127
 

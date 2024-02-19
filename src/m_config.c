@@ -379,12 +379,12 @@ char *M_GetSaveGameDir(char *iwadname)
     return savegamedir;
 }
 
-// temporary.
-void M_CheckUnboundConfig(void) {
-    for (int i = 0; i < doom_defaults.numdefaults; i++) {
-        if (!doom_defaults.defaults[i].location) {
-            playdate->system->logToConsole("%s UNBOUND\n", doom_defaults.defaults[i].name);
-        }
-    }
-}
+// // temporary.
+// void M_CheckUnboundConfig(void) {
+//     for (int i = 0; i < doom_defaults.numdefaults; i++) {
+//         if (!doom_defaults.defaults[i].location) {
+//             playdate->system->logToConsole("%s UNBOUND\n", doom_defaults.defaults[i].name);
+//         }
+//     }
+// }
 
