@@ -119,6 +119,9 @@ static int update(void *userdata) {
             I_DrawCheat();
 
         playdate->system->drawFPS(0, 0);
+        extern int detailshift;
+        if (!detailshift)
+            playdate->graphics->drawText("HI", 2, kASCIIEncoding, LCD_COLUMNS - 20, 0);
     }
 
 end:
@@ -158,6 +161,7 @@ int eventHandler(PlaydateAPI *pd, PDSystemEvent event, uint32_t arg) {
         myargc = the_argc;
         myargv = the_argv;
 
+        // Match display to game tic rate — 1 tic per frame, no double-tic spikes.
         playdate->display->setRefreshRate(TICRATE);
 
         // Load a smaller font for the initialization screen.

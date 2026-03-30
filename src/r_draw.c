@@ -28,6 +28,12 @@
 #include "w_wad.h"
 
 #include "r_local.h"
+#include "r_state.h"
+#include "i_video.h"
+#include "i_itcm.h"
+
+// Camera-anchored dither offset (computed per-frame in r_main.c).
+extern int dither_xoffset;
 
 // Needs access to LFB (guess what).
 #include "v_video.h"
@@ -93,7 +99,7 @@ int			dccount;
 // Thus a special case loop for very fast rendering can
 //  be used. It has also been used with Wolfenstein 3D.
 //
-void R_DrawColumn (void)
+HOT_FUNC void R_DrawColumn (void)
 {
     int			count;
     pixel_t*		dest;
@@ -129,27 +135,22 @@ void R_DrawColumn (void)
     fracstep = dc_iscale;
     frac = dc_texturemid + (dc_yl-centery)*fracstep;
 
-    // Inner loop that does the actual texture mapping,
-    //  e.g. a DDA-lile scaling.
-    // This is as fast as it gets.
-    do
     {
-	// Re-map color indices from wall texture column
-	//  using a lighting/special effects LUT.
-    if (shades[graymap[dc_colormap[dc_source[(frac>>FRACBITS)&127]]]][yoff & 3] & xmask) {
-        *dest |= xmask;
-    } else {
-        *dest &= ~xmask;
-    }
-	
-	dest += SCREENSTRIDE;
-	frac += fracstep;
-    ++yoff;
-	
+    const byte *src = dc_source;
+    // High detail uses HQ dithering: 65 gray levels, 8-row Bayer matrix.
+    const uint8_t *gcm = gray_colormaps + (dc_colormap - colormaps);
+    const uint8_t notmask = ~xmask;
+
+    // Direct path — R_DrawColumn is no longer used in gameplay
+    // (both modes use R_DrawColumnLow) but kept for completeness.
+    do {
+        *dest = (*dest & notmask) | (shades[gcm[src[(frac>>FRACBITS)&127]]][yoff & 31] & xmask);
+        dest += SCREENSTRIDE; frac += fracstep; ++yoff;
     } while (count--);
+    }
 }
 
-void R_DrawColumnLow (void)
+HOT_FUNC void R_DrawColumnLow (void)
 {
     int			count;
     pixel_t*		dest;
@@ -187,15 +188,18 @@ void R_DrawColumnLow (void)
     fracstep = dc_iscale;
     frac = dc_texturemid + (dc_yl-centery)*fracstep;
 
+    {
+    const byte *src = dc_source;
+    const uint8_t *gcm = gray_colormaps + (dc_colormap - colormaps);
     do
     {
-    *dest &= ~xmask;
-    *dest |= (shades[graymap[dc_colormap[dc_source[(frac>>FRACBITS)&127]]]][yoff & 3] & xmask);
+        uint8_t shade = shades[gcm[src[(frac>>FRACBITS)&127]]][yoff & 31];
+        *dest = (*dest & ~xmask) | (shade & xmask);
 	dest += SCREENSTRIDE;
 	frac += fracstep;
-    ++yoff;
-
+	++yoff;
     } while (count--);
+    }
 }
 
 
@@ -224,12 +228,10 @@ static int fuzzpos = 0;
 //  could create the SHADOW effect,
 //  i.e. spectres and invisible players.
 //
-void R_DrawFuzzColumn (void)
+HOT_FUNC void R_DrawFuzzColumn (void)
 {
     int			count;
     pixel_t*		dest;
-    fixed_t		frac;
-    fixed_t		fracstep;	
 
     int xoff, yoff;
     uint8_t xmask;
@@ -262,10 +264,6 @@ void R_DrawFuzzColumn (void)
     dest = ylookup[dc_yl] + (xoff >> 3);
     xmask = 0x80 >> (xoff & 7);
 
-    // Looks familiar.
-    fracstep = dc_iscale;
-    frac = dc_texturemid + (dc_yl-centery)*fracstep;
-
     int offset = fuzzoffset[fuzzpos];
 
     // instead of dither approach from vanilla, we take a different approach.
@@ -280,7 +278,6 @@ void R_DrawFuzzColumn (void)
 
     dest += SCREENSTRIDE;
 
-    frac += fracstep;
     ++yoff;
     } while (count--);
 
@@ -295,9 +292,6 @@ void R_DrawFuzzColumnLow (void)
 {
     int			count;
     pixel_t*		dest;
-    pixel_t*		dest2;
-    fixed_t		frac;
-    fixed_t		fracstep;	
     int x;
 
     int xoff, yoff;
@@ -333,11 +327,7 @@ void R_DrawFuzzColumnLow (void)
     yoff = dc_yl;
     xoff = columnofs[x];
     dest = ylookup[dc_yl] + (xoff >> 3);
-    xmask = 0x80 >> (xoff & 7);
-
-    // Looks familiar.
-    fracstep = dc_iscale;
-    frac = dc_texturemid + (dc_yl-centery)*fracstep;
+    xmask = 0xc0 >> (xoff & 7);
 
     int offset = fuzzoffset[fuzzpos];
     do
@@ -350,7 +340,6 @@ void R_DrawFuzzColumnLow (void)
 
     dest += SCREENSTRIDE;
 
-    frac += fracstep;
     ++yoff;
     } while (count--);
 
@@ -375,7 +364,7 @@ void R_DrawFuzzColumnLow (void)
 byte*	dc_translation;
 byte*	translationtables;
 
-void R_DrawTranslatedColumn (void)
+HOT_FUNC void R_DrawTranslatedColumn (void)
 {
     int			count;
     pixel_t*		dest;
@@ -411,25 +400,20 @@ void R_DrawTranslatedColumn (void)
     frac = dc_texturemid + (dc_yl-centery)*fracstep;
 
     // Here we do an additional index re-mapping.
+    {
+    const byte *src = dc_source;
+    const byte *trans = dc_translation;
+    const uint8_t *gcm = gray_colormaps + (dc_colormap - colormaps);
     do
     {
-	// Translation tables are used
-	//  to map certain colorramps to other ones,
-	//  used with PLAY sprites.
-	// Thus the "green" ramp of the player 0 sprite
-	//  is mapped to gray, red, black/indigo.
+        uint8_t shade = shades[gcm[trans[src[frac>>FRACBITS]]]][yoff & 31];
+        *dest = (*dest & ~xmask) | (shade & xmask);
 
-    // ...holy indirection batman!!!
-    if (shades[graymap[dc_colormap[dc_translation[dc_source[frac>>FRACBITS]]]]][yoff & 3] & xmask) {
-        *dest |= xmask;
-    } else {
-        *dest &= ~xmask;
-    }
-	
 	dest += SCREENSTRIDE;
 	frac += fracstep;
     ++yoff;
     } while (count--);
+    }
 }
 
 void R_DrawTranslatedColumnLow (void)
@@ -472,21 +456,19 @@ void R_DrawTranslatedColumnLow (void)
     frac = dc_texturemid + (dc_yl-centery)*fracstep;
 
     // Here we do an additional index re-mapping.
+    {
+    const byte *src = dc_source;
+    const byte *trans = dc_translation;
+    const uint8_t *gcm = gray_colormaps + (dc_colormap - colormaps);
     do
     {
-	// Translation tables are used
-	//  to map certain colorramps to other ones,
-	//  used with PLAY sprites.
-	// Thus the "green" ramp of the player 0 sprite
-	//  is mapped to gray, red, black/indigo.
-    *dest &= ~xmask;
-    *dest |= (shades[graymap[dc_colormap[dc_translation[dc_source[frac>>FRACBITS]]]]][yoff & 3] & xmask);
+        uint8_t shade = shades[gcm[trans[src[frac>>FRACBITS]]]][yoff & 31];
+        *dest = (*dest & ~xmask) | (shade & xmask);
 	dest += SCREENSTRIDE;
 	frac += fracstep;
-    ++yoff;
-	
-	frac += fracstep;
+	++yoff;
     } while (count--);
+    }
 }
 
 
@@ -559,7 +541,7 @@ int			dscount;
 
 //
 // Draws the actual span.
-void R_DrawSpan (void)
+HOT_FUNC void R_DrawSpan (void)
 {
     unsigned int position, step;
     pixel_t *dest;
@@ -599,36 +581,64 @@ void R_DrawSpan (void)
     // We do not check for zero spans here?
     count = ds_x2 - ds_x1;
 
-    do
     {
-	// Calculate current texture index in u,v.
-        ytemp = (position >> 4) & 0x0fc0;
-        xtemp = (position >> 26);
-        spot = xtemp | ytemp;
+    const byte *src = ds_source;
+    const uint8_t *gcm = gray_colormaps + (ds_colormap - colormaps);
+    const int yrow = ds_y & 31;
 
-	// Lookup pixel from flat texture tile,
-	//  re-index using light/colormap.
-        if (shades[graymap[ds_colormap[ds_source[spot]]]][ds_y & 3] & xmask) {
-	        *dest |= xmask;
-        } else {
-            *dest &= ~xmask;
-        }
+    // Pre-compute dither LUT for first byte column.
+    uint8_t dither[256];
+    for (int i = 0; i < 256; i++)
+        dither[i] = shades[gcm[i]][yrow];
 
+    // Handle partial leading byte.
+    while (count >= 0 && xmask != 0x80) {
+        spot = ((position >> 4) & 0x0fc0) | (position >> 26);
+        *dest = (*dest & ~xmask) | (dither[src[spot]] & xmask);
         xmask >>= 1;
-        if (xmask == 0) {
-            xmask = 0x80;
-            ++dest;
-        }
-
+        if (xmask == 0) { xmask = 0x80; ++dest; }
         position += step;
+        count--;
+    }
 
-    } while (count--);
+    // Process full bytes: accumulate 8 pixels branchlessly, write once.
+    while (count >= 7) {
+        uint8_t byte_acc;
+        spot = ((position >> 4) & 0x0fc0) | (position >> 26);
+        byte_acc  = dither[src[spot]] & 0x80; position += step;
+        spot = ((position >> 4) & 0x0fc0) | (position >> 26);
+        byte_acc |= dither[src[spot]] & 0x40; position += step;
+        spot = ((position >> 4) & 0x0fc0) | (position >> 26);
+        byte_acc |= dither[src[spot]] & 0x20; position += step;
+        spot = ((position >> 4) & 0x0fc0) | (position >> 26);
+        byte_acc |= dither[src[spot]] & 0x10; position += step;
+        spot = ((position >> 4) & 0x0fc0) | (position >> 26);
+        byte_acc |= dither[src[spot]] & 0x08; position += step;
+        spot = ((position >> 4) & 0x0fc0) | (position >> 26);
+        byte_acc |= dither[src[spot]] & 0x04; position += step;
+        spot = ((position >> 4) & 0x0fc0) | (position >> 26);
+        byte_acc |= dither[src[spot]] & 0x02; position += step;
+        spot = ((position >> 4) & 0x0fc0) | (position >> 26);
+        byte_acc |= dither[src[spot]] & 0x01; position += step;
+        *dest++ = byte_acc;
+        count -= 8;
+    }
+
+    // Handle trailing partial byte.
+    while (count-- >= 0) {
+        spot = ((position >> 4) & 0x0fc0) | (position >> 26);
+        *dest = (*dest & ~xmask) | (dither[src[spot]] & xmask);
+        xmask >>= 1;
+        if (xmask == 0) { xmask = 0x80; ++dest; }
+        position += step;
+    }
+    }
 }
 
 //
 // Again..
 //
-void R_DrawSpanLow (void)
+HOT_FUNC void R_DrawSpanLow (void)
 {
     unsigned int position, step;
     unsigned int xtemp, ytemp;
@@ -666,15 +676,19 @@ void R_DrawSpanLow (void)
     dest = ylookup[ds_y] + (xoff >> 3);
     xmask = 0xc0 >> (xoff & 7);
 
+    {
+    const byte *src = ds_source;
+    const uint8_t *gcm = gray_colormaps + (ds_colormap - colormaps);
+    const int yrow = ds_y & 31;
+
     do
     {
-	// Calculate current texture index in u,v.
         ytemp = (position >> 4) & 0x0fc0;
         xtemp = (position >> 26);
         spot = xtemp | ytemp;
 
-        *dest &= ~xmask;
-        *dest |= (shades[graymap[ds_colormap[ds_source[spot]]]][ds_y & 3] & xmask);
+        uint8_t shade = shades[gcm[src[spot]]][yrow];
+        *dest = (*dest & ~xmask) | (shade & xmask);
 
         xmask >>= 2;
         if (xmask == 0) {
@@ -685,6 +699,7 @@ void R_DrawSpanLow (void)
 	position += step;
 
     } while (count--);
+    }
 }
 
 //

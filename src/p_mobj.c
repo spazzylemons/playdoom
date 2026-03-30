@@ -20,7 +20,10 @@
 #include "z_zone.h"
 #include "m_random.h"
 
+#include <stdlib.h>
+
 #include "doomdef.h"
+#include "doomstat.h"
 #include "p_local.h"
 #include "sounds.h"
 
@@ -450,6 +453,24 @@ P_NightmareRespawn (mobj_t* mobj)
 //
 void P_MobjThinker (mobj_t* mobj)
 {
+    // Throttle monster AI based on distance to player.
+    // Close monsters think every tic (responsive combat).
+    // Medium-distance monsters think every 2nd tic.
+    // Far monsters think every 4th tic.
+    // Projectiles and skull-fly monsters always think every tic.
+    if ((mobj->flags & MF_COUNTKILL) && !(mobj->flags & MF_SKULLFLY))
+    {
+        player_t *player = &players[consoleplayer];
+        fixed_t dx = abs(mobj->x - player->mo->x);
+        fixed_t dy = abs(mobj->y - player->mo->y);
+        fixed_t dist = dx > dy ? dx : dy;
+
+        if (dist > (1536 << FRACBITS) && (gametic & 3))
+            return;  // far: every 4th tic
+        if (dist > (512 << FRACBITS) && (gametic & 1))
+            return;  // medium: every 2nd tic
+    }
+
     // momentum movement
     if (mobj->momx
 	|| mobj->momy

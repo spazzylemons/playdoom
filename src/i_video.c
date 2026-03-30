@@ -27,6 +27,8 @@
 #include "m_config.h"
 #include "m_misc.h"
 #include "tables.h"
+#include "r_main.h"
+#include "r_state.h"
 #include "v_video.h"
 #include "w_wad.h"
 #include "z_zone.h"
@@ -37,6 +39,9 @@
 
 // The screen buffer; this is modified to draw things to the screen
 pixel_t *I_VideoBuffer = NULL;
+
+// Pre-composed gray colormaps: gray_colormaps[colormap_offset + palette_index] = gray shade
+uint8_t *gray_colormaps = NULL;
 
 // Loaded font.
 static LCDFont *font = NULL;
@@ -71,10 +76,6 @@ void I_UpdateNoBlit (void)
 //
 void I_FinishUpdate (void)
 {
-    static int lasttic;
-    int tics;
-    int i;
-
     playdate->graphics->markUpdatedRows(0, LCD_ROWS - 1);
 }
 
@@ -90,28 +91,44 @@ void I_ReadScreen (pixel_t* scr)
 // which of the 17 shades of gray for each color?
 uint8_t graymap[256];
 
-// the shades themselves
-#define DitherPattern(a, b, c, d) { a * 17, b * 17, c * 17, d * 17 }
-
-const uint8_t shades[17][4] = {
-    DitherPattern(0x0, 0x0, 0x0, 0x0),
-    DitherPattern(0x8, 0x0, 0x0, 0x0),
-    DitherPattern(0x8, 0x0, 0x2, 0x0),
-    DitherPattern(0x8, 0x0, 0xa, 0x0),
-    DitherPattern(0xa, 0x0, 0xa, 0x0),
-    DitherPattern(0xa, 0x0, 0xa, 0x1),
-    DitherPattern(0xa, 0x4, 0xa, 0x1),
-    DitherPattern(0xa, 0x4, 0xa, 0x5),
-    DitherPattern(0xa, 0x5, 0xa, 0x5),
-    DitherPattern(0xd, 0x5, 0xa, 0x5),
-    DitherPattern(0xd, 0x5, 0xe, 0x5),
-    DitherPattern(0xd, 0x5, 0xf, 0x5),
-    DitherPattern(0xf, 0x5, 0xf, 0x5),
-    DitherPattern(0xf, 0x5, 0xf, 0xd),
-    DitherPattern(0xf, 0x7, 0xf, 0xd),
-    DitherPattern(0xf, 0x7, 0xf, 0xf),
-    DitherPattern(0xf, 0xf, 0xf, 0xf),
+// 32×32 Bayer matrix (0-255). Tiles every 32px — much less visible than 4×4.
+static const uint8_t bayer32[32][8] = {
+    {  0,127, 31,159,  7,135, 39,167}, {191, 63,223, 95,199, 71,231,103},
+    { 47,175, 15,143, 55,183, 23,151}, {239,111,207, 79,247,119,215, 87},
+    { 11,139, 43,171,  3,131, 35,163}, {203, 75,235,107,195, 67,227, 99},
+    { 59,187, 27,155, 51,179, 19,147}, {251,123,219, 91,243,115,211, 83},
+    {  2,130, 34,162, 10,138, 42,170}, {194, 66,226, 98,202, 74,234,106},
+    { 50,178, 18,146, 58,186, 26,154}, {242,114,210, 82,250,122,218, 90},
+    { 14,142, 46,174,  6,134, 38,166}, {206, 78,238,110,198, 70,230,102},
+    { 62,190, 30,158, 54,182, 22,150}, {254,126,222, 94,246,118,214, 86},
+    {  0,128, 32,160,  8,136, 40,168}, {192, 64,224, 96,200, 72,232,104},
+    { 48,176, 16,144, 56,184, 24,152}, {240,112,208, 80,248,120,216, 88},
+    { 12,140, 44,172,  4,132, 36,164}, {204, 76,236,108,196, 68,228,100},
+    { 60,188, 28,156, 52,180, 20,148}, {252,124,220, 92,244,116,212, 84},
+    {  3,131, 35,163, 11,139, 43,171}, {195, 67,227, 99,203, 75,235,107},
+    { 51,179, 19,147, 59,187, 27,155}, {243,115,211, 83,251,123,219, 91},
+    { 15,143, 47,175,  7,135, 39,167}, {207, 79,239,111,199, 71,231,103},
+    { 63,191, 31,159, 55,183, 23,151}, {255,127,223, 95,247,119,215, 87},
 };
+
+// 256 levels × 32 rows = 8KB. Full range matches the 0-255 Bayer thresholds.
+// Every possible gray value gets its own unique pattern — no quantization banding.
+#define NUM_SHADE_LEVELS 128
+uint8_t shades[NUM_SHADE_LEVELS][32];
+
+static void I_InitDitherTables(void) {
+    for (int gray = 0; gray < 128; gray++) {
+        int brightness = gray * 255 / 127;
+        for (int row = 0; row < 32; row++) {
+            uint8_t pattern = 0;
+            for (int col = 0; col < 8; col++) {
+                if (brightness > bayer32[row][col])
+                    pattern |= (0x80 >> col);
+            }
+            shades[gray][row] = pattern;
+        }
+    }
+}
 
 
 //
@@ -120,13 +137,44 @@ const uint8_t shades[17][4] = {
 void I_SetPalette (byte *doompalette)
 {
     int i;
+    byte *pal = doompalette;
 
     for (i=0; i<256; ++i)
     {
-        uint8_t red = *doompalette++;
-        uint8_t green = *doompalette++;
-        uint8_t blue = *doompalette++;
-        graymap[i] = (red * 299 + green * 587 + blue * 114) / 15001;
+        uint8_t red = *pal++;
+        uint8_t green = *pal++;
+        uint8_t blue = *pal++;
+        // Perceptual luminance (0.0 - 1.0)
+        float lum = (red * 299 + green * 587 + blue * 114) / 255000.0f;
+
+        // Fully linear with slight gain. No curve — let DOOM's colormaps
+        // handle distance darkening. The 32×32 Bayer handles the rest.
+        int l = (int)(lum * 255.0f);
+        l = (l * 9) >> 3;          // 1.125x gain
+        if (l > 255) l = 255;
+
+        graymap[i] = (uint8_t)(l >> 1);  // 0-255 → 0-127
+        if (graymap[i] > 127) graymap[i] = 127;
+    }
+
+    I_InitDitherTables();
+    I_RebuildGrayColormaps();
+}
+
+void I_RebuildGrayColormaps(void)
+{
+    if (colormaps == NULL)
+        return;
+
+    // COLORMAP lump: 34 maps of 256 bytes each
+    int num_maps = 34;
+    int total = num_maps * 256;
+
+    if (gray_colormaps == NULL)
+        gray_colormaps = Z_Malloc(total, PU_STATIC, NULL);
+
+    for (int i = 0; i < total; i++) {
+        gray_colormaps[i] = graymap[colormaps[i]];
     }
 }
 

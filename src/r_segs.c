@@ -31,6 +31,7 @@
 
 #include "r_local.h"
 #include "r_sky.h"
+#include "i_itcm.h"
 
 
 // OPTIMIZE: closed two sided lines as single sided
@@ -196,7 +197,7 @@ R_RenderMaskedSegRange
 #define HEIGHTBITS		12
 #define HEIGHTUNIT		(1<<HEIGHTBITS)
 
-void R_RenderSegLoop (void)
+HOT_FUNC void R_RenderSegLoop (void)
 {
     angle_t		angle;
     unsigned		index;
@@ -206,6 +207,11 @@ void R_RenderSegLoop (void)
     fixed_t		texturecolumn;
     int			top;
     int			bottom;
+
+    // Cache the function pointer comparison to avoid indirect calls
+    // in the common case (R_DrawColumn). Direct calls enable better
+    // branch prediction and allow LTO to inline.
+    const boolean use_basecol = (colfunc == basecolfunc);
 
     for ( ; rw_x < rw_stopx ; rw_x++)
     {
@@ -281,7 +287,7 @@ void R_RenderSegLoop (void)
 	    dc_yh = yh;
 	    dc_texturemid = rw_midtexturemid;
 	    dc_source = R_GetColumn(midtexture,texturecolumn);
-	    colfunc ();
+	    if (use_basecol) basecolfunc(); else colfunc();
 	    ceilingclip[rw_x] = viewheight;
 	    floorclip[rw_x] = -1;
 	}
@@ -303,7 +309,7 @@ void R_RenderSegLoop (void)
 		    dc_yh = mid;
 		    dc_texturemid = rw_toptexturemid;
 		    dc_source = R_GetColumn(toptexture,texturecolumn);
-		    colfunc ();
+		    if (use_basecol) basecolfunc(); else colfunc();
 		    ceilingclip[rw_x] = mid;
 		}
 		else
@@ -333,7 +339,7 @@ void R_RenderSegLoop (void)
 		    dc_texturemid = rw_bottomtexturemid;
 		    dc_source = R_GetColumn(bottomtexture,
 					    texturecolumn);
-		    colfunc ();
+		    if (use_basecol) basecolfunc(); else colfunc();
 		    floorclip[rw_x] = mid;
 		}
 		else

@@ -21,14 +21,18 @@ void _putchar(char character) {
 }
 
 FILE_ *fopen_(const char *name, const char *mode) {
-    FileOptions flags = 0;
+    SDFile *fd = NULL;
+
     if (strstr(mode, "r")) {
-        flags = kFileRead | kFileReadData;
+        // Try bundled data first (PDX), then writable data dir.
+        fd = playdate->file->open(name, kFileReadData);
+        if (fd == NULL) {
+            fd = playdate->file->open(name, kFileRead);
+        }
     } else if (strstr(mode, "w")) {
-        flags = kFileWrite;
+        fd = playdate->file->open(name, kFileWrite);
     }
 
-    SDFile *fd = playdate->file->open(name, flags);
     if (fd == NULL) {
         return NULL;
     }

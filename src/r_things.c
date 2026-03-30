@@ -371,7 +371,7 @@ void R_DrawMaskedColumn (column_t* column)
 
 	    // Drawn by either R_DrawColumn
 	    //  or (SHADOW) R_DrawFuzzColumn.
-	    colfunc ();	
+	    if (colfunc == basecolfunc) basecolfunc(); else colfunc();
 	}
 	column = (column_t *)(  (byte *)column + column->length + 4);
     }
@@ -835,8 +835,8 @@ void R_SortVisSprites (void)
 void R_DrawSprite (vissprite_t* spr)
 {
     drawseg_t*		ds;
-    short		clipbot[SCREENWIDTH];
-    short		cliptop[SCREENWIDTH];
+    static short	clipbot[SCREENWIDTH];
+    static short	cliptop[SCREENWIDTH];
     int			x;
     int			r1;
     int			r2;

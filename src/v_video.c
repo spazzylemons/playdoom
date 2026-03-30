@@ -68,18 +68,23 @@ void V_CopyRect(int srcx, int srcy, pixel_t *source,
     src = source + SCREENSTRIDE * srcy + (srcx >> 3);
     dest = dest_screen + SCREENSTRIDE * desty + (destx >> 3);
 
+    // Fast path: byte-aligned copy when both src and dest are byte-aligned
+    if ((srcx & 7) == 0 && (destx & 7) == 0 && (width & 7) == 0) {
+        int bytes = width >> 3;
+        for ( ; height > 0; height--) {
+            memcpy(dest, src, bytes);
+            src += SCREENSTRIDE;
+            dest += SCREENSTRIDE;
+        }
+    } else {
     for ( ; height>0 ; height--) {
         uint8_t srcxmask = 0x80 >> (srcx & 7);
         uint8_t destxmask = 0x80 >> (destx & 7);
         pixel_t *srcline = src;
         pixel_t *destline = dest;
-        // TODO optimize this for 1-bit screen. Yuck.
         for (int w = 0; w < width; w++) {
-            if (*srcline & srcxmask) {
-                *destline |= destxmask;
-            } else {
-                *destline &= ~destxmask;
-            }
+            uint8_t bit = (*srcline & srcxmask) ? destxmask : 0;
+            *destline = (*destline & ~destxmask) | bit;
 
             srcxmask >>= 1;
             if (srcxmask == 0) {
@@ -96,6 +101,7 @@ void V_CopyRect(int srcx, int srcy, pixel_t *source,
 
         src += SCREENSTRIDE;
         dest += SCREENSTRIDE;
+    }
     }
 }
 
@@ -146,14 +152,22 @@ void V_DrawPatch(int x, int y, patch_t *patch)
             dest = desttop + column->topdelta*SCREENSTRIDE;
             count = column->length;
 
-            while (count--)
-            {
-                if (shades[graymap[*source++]][(yoff++) & 3] & xmask) {
-                    *dest |= xmask;
-                } else {
-                    *dest &= ~xmask;
+            // Status bar area (y >= 208): use hard threshold for crisp HUD.
+            // 3D viewport: use dithered shading.
+            if (y >= 208) {
+                while (count--)
+                {
+                    uint8_t bit = (graymap[*source++] > 63) ? xmask : 0;
+                    *dest = (*dest & ~xmask) | bit;
+                    dest += SCREENSTRIDE;
                 }
-                dest += SCREENSTRIDE;
+            } else {
+                while (count--)
+                {
+                    uint8_t shade = shades[graymap[*source++]][(yoff++) & 31];
+                    *dest = (*dest & ~xmask) | (shade & xmask);
+                    dest += SCREENSTRIDE;
+                }
             }
             column = (column_t *)((byte *)column + column->length + 4);
         }
@@ -215,11 +229,8 @@ void V_DrawPatchFlipped(int x, int y, patch_t *patch)
 
             while (count--)
             {
-                if (shades[graymap[*source++]][(yoff++) & 3] & xmask) {
-                    *dest |= xmask;
-                } else {
-                    *dest &= ~xmask;
-                }
+                uint8_t shade = shades[graymap[*source++]][(yoff++) & 31];
+                *dest = (*dest & ~xmask) | (shade & xmask);
                 dest += SCREENSTRIDE;
             }
             column = (column_t *)((byte *)column + column->length + 4);
@@ -289,11 +300,8 @@ void V_DrawPatchFont(int x, int y, patch_t *patch)
 
             while (count--)
             {
-                if (*source++ < 190) {
-                    *dest |= xmask;
-                } else {
-                    *dest &= ~xmask;
-                }
+                uint8_t bit = (*source++ < 190) ? xmask : 0;
+                *dest = (*dest & ~xmask) | bit;
                 dest += SCREENSTRIDE;
             }
             column = (column_t *)((byte *)column + column->length + 4);
@@ -361,11 +369,8 @@ void V_StretchColumn(int x, int y, column_t *column) {
             pixel_t *destend = desttop + ((6*(desty+1))/5)*SCREENSTRIDE;
             uint8_t gray = graymap[*source++];
             do {
-                if (shades[gray][(yoff++) & 3] & xmask) {
-                    *dest |= xmask;
-                } else {
-                    *dest &= ~xmask;
-                }
+                uint8_t shade = shades[gray][(yoff++) & 31];
+                *dest = (*dest & ~xmask) | (shade & xmask);
                 dest += SCREENSTRIDE;
             } while (dest < destend);
             ++desty;

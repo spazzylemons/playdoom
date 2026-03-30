@@ -616,20 +616,14 @@ void R_ExecuteSetViewSize (void)
     centeryfrac = centery<<FRACBITS;
     projection = centerxfrac;
 
-    if (!detailshift)
-    {
-	colfunc = basecolfunc = R_DrawColumn;
-	fuzzcolfunc = R_DrawFuzzColumn;
-	transcolfunc = R_DrawTranslatedColumn;
-	spanfunc = R_DrawSpan;
-    }
-    else
-    {
-	colfunc = basecolfunc = R_DrawColumnLow;
-	fuzzcolfunc = R_DrawFuzzColumnLow;
-	transcolfunc = R_DrawTranslatedColumnLow;
-	spanfunc = R_DrawSpanLow;
-    }
+    // Both modes use 200px (low-res) column drawers.
+    // "High" quality uses 65-level HQ dithering.
+    // "Low" quality uses 17-level standard dithering.
+    colfunc = basecolfunc = R_DrawColumnLow;
+    fuzzcolfunc = R_DrawFuzzColumnLow;
+    transcolfunc = R_DrawTranslatedColumnLow;
+    spanfunc = R_DrawSpanLow;
+    detailshift = 1;
 
     R_InitBuffer (scaledviewwidth, viewheight);
 	
@@ -735,6 +729,9 @@ R_PointInSubsector
 
 
 
+// Camera-anchored dither offset (computed per-frame in R_SetupFrame).
+int dither_xoffset = 0;
+
 //
 // R_SetupFrame
 //
@@ -752,6 +749,12 @@ void R_SetupFrame (player_t* player)
     
     viewsin = finesine[viewangle>>ANGLETOFINESHIFT];
     viewcos = finecosine[viewangle>>ANGLETOFINESHIFT];
+
+    // Camera-anchored dither: convert yaw angle to pixel offset.
+    // 90° FOV on 200px (low-res) = ~200/90 ≈ 2.2 pixels per degree.
+    // Full revolution (0xFFFFFFFF) = 360° = ~800 pixels.
+    // We only need the low bits for & 7 masking.
+    dither_xoffset = (int)(viewangle >> 21);  // divide by ~2M ≈ 800 pixels per revolution
 	
     sscount = 0;
 	
@@ -778,32 +781,24 @@ void R_SetupFrame (player_t* player)
 //
 // R_RenderView
 //
-void R_RenderPlayerView (player_t* player)
-{	
-    R_SetupFrame (player);
 
-    // Clear buffers.
+// Interlace field: 0 = even rows, 1 = odd rows. Toggled each frame.
+int interlace_field = 0;
+
+void R_RenderPlayerView (player_t* player)
+{
+    R_SetupFrame (player);
     R_ClearClipSegs ();
     R_ClearDrawSegs ();
     R_ClearPlanes ();
     R_ClearSprites ();
-    
-    // check for new console commands.
-    NetUpdate ();
 
-    // The head node is the last node output.
     R_RenderBSPNode (numnodes-1);
-    
-    // Check for new console commands.
-    NetUpdate ();
-    
     R_DrawPlanes ();
-    
-    // Check for new console commands.
-    NetUpdate ();
-    
     R_DrawMasked ();
 
-    // Check for new console commands.
-    NetUpdate ();				
+    NetUpdate ();
+
+    // Toggle interlace field for next frame.
+    interlace_field ^= 1;
 }

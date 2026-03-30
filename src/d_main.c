@@ -27,6 +27,7 @@
 
 #include "doomdef.h"
 #include "doomstat.h"
+#include "i_video.h"
 
 #include "dstrings.h"
 #include "sounds.h"
@@ -209,8 +210,9 @@ void D_Display (void)
       case GS_LEVEL:
 	if (!gametic)
 	    break;
-	if (automapactive)
+	if (automapactive) {
 	    AM_Drawer ();
+	}
 	if (wipe || (viewheight != SCREENHEIGHT && fullscreen))
 	    redrawsbar = true;
 	if (inhelpscreensstate && !inhelpscreens)
@@ -382,7 +384,7 @@ void D_DoomLoopRun(void)
 
     S_UpdateSounds (players[consoleplayer].mo);// move positional sounds
 
-	// Update display, next frame, with current state.
+    // Update display, next frame, with current state.
     D_Display ();
 }
 

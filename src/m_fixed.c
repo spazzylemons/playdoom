@@ -28,17 +28,7 @@
 
 
 
-// Fixme. __USE_C_FIXED__ or something.
-
-fixed_t
-FixedMul
-( fixed_t	a,
-  fixed_t	b )
-{
-    return ((int64_t) a * (int64_t) b) >> FRACBITS;
-}
-
-
+// FixedMul is now inline in m_fixed.h.
 
 //
 // FixedDiv, C version.

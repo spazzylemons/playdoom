@@ -24,7 +24,7 @@ VPATH += src
 SRC = $(wildcard src/*.c)
 
 # List all user directories here
-UINCDIR = 
+UINCDIR = src/libc
 
 # List user asm files
 UASRC = 
@@ -36,7 +36,7 @@ UDEFS =
 UADEFS = 
 
 # List the user directory to look for the libraries here
-ULIBDIR =
+ULIBDIR = lib
 
 # List all user libraries here
 ULIBS =
@@ -44,5 +44,8 @@ ULIBS =
 include $(SDK)/C_API/buildsupport/common.mk
 
 # TODO clean up code that triggers the strict prototypes warning
-CPFLAGS += -Wno-strict-prototypes -DNDEBUG -Oz -flto
-LDFLAGS += -flto
+CPFLAGS += -Wno-strict-prototypes -DNDEBUG -Os -flto -ffreestanding -falign-loops=32 -Wdouble-promotion -fsingle-precision-constant
+LDFLAGS += -flto -nodefaultlibs -lgcc -Wno-lto-type-mismatch
+
+# Custom linker script with ITCM section support
+LDSCRIPT = link_map.ld

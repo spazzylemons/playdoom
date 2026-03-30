@@ -420,46 +420,7 @@ void HU_Ticker(void)
 
     } // else message_on = false;
 
-    // check for incoming chat characters
-    if (netgame)
-    {
-	for (i=0 ; i<MAXPLAYERS; i++)
-	{
-	    if (!playeringame[i])
-		continue;
-	    if (i != consoleplayer
-		&& (c = players[i].cmd.chatchar))
-	    {
-		if (c <= HU_BROADCAST)
-		    chat_dest[i] = c;
-		else
-		{
-		    rc = HUlib_keyInIText(&w_inputbuffer[i], c);
-		    if (rc && c == KEY_ENTER)
-		    {
-			if (w_inputbuffer[i].l.len
-			    && (chat_dest[i] == consoleplayer+1
-				|| chat_dest[i] == HU_BROADCAST))
-			{
-			    HUlib_addMessageToSText(&w_message,
-						    player_names[i],
-						    w_inputbuffer[i].l.l);
-			    
-			    message_nottobefuckedwith = true;
-			    message_on = true;
-			    message_counter = HU_MSGTIMEOUT;
-			    if ( gamemode == commercial )
-			      S_StartSound(0, sfx_radio);
-			    else
-			      S_StartSound(0, sfx_tink);
-			}
-			HUlib_resetIText(&w_inputbuffer[i]);
-		    }
-		}
-		players[i].cmd.chatchar = 0;
-	    }
-	}
-    }
+    // Netgame chat disabled — Playdate is single-player only.
 
 }
 

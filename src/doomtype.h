@@ -65,17 +65,28 @@
 
 #include <inttypes.h>
 
-#if defined(__cplusplus) || defined(__bool_true_false_are_defined)
+// DOOM uses boolean as a 3-state value (-1/0/1 via memset to 0xFF),
+// so we cannot use C23 bool which normalizes to 0/1.
+#if defined(__cplusplus)
 
-// Use builtin bool type with C++.
+typedef bool boolean;
+
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
+
+// C23 makes true/false/bool keywords — use int to preserve 3-state semantics.
+typedef int boolean;
+#define false 0
+#define true 1
+
+#elif defined(__bool_true_false_are_defined)
 
 typedef bool boolean;
 
 #else
 
-typedef enum 
+typedef enum
 {
-    false, 
+    false,
     true
 } boolean;
 

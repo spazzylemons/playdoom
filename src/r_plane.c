@@ -67,7 +67,6 @@ short			ceilingclip[SCREENWIDTH];
 // initialized to 0 at start
 //
 int			spanstart[SCREENHEIGHT];
-int			spanstop[SCREENHEIGHT];
 
 //
 // texture mapping
@@ -99,6 +98,8 @@ fixed_t			cachedystep[SCREENHEIGHT];
 //
 // BASIC PRIMITIVE
 //
+extern int interlace_field;
+
 void
 R_MapPlane
 ( int		y,
@@ -109,7 +110,7 @@ R_MapPlane
     fixed_t	distance;
     fixed_t	length;
     unsigned	index;
-	
+
 #ifdef RANGECHECK
     if (x2 < x1
      || x1 < 0
@@ -155,8 +156,8 @@ R_MapPlane
     ds_x1 = x1;
     ds_x2 = x2;
 
-    // high or low detail
-    spanfunc ();	
+    // high or low detail — direct call for common case.
+    if (spanfunc == R_DrawSpan) R_DrawSpan(); else spanfunc();	
 }
 
 
@@ -319,12 +320,14 @@ R_MakeSpans
 {
     while (t1 < t2 && t1<=b1)
     {
-	R_MapPlane (t1,spanstart[t1],x-1);
+	if (((t1 + viewwindowy) & 1) == interlace_field)
+	    R_MapPlane (t1,spanstart[t1],x-1);
 	t1++;
     }
     while (b1 > b2 && b1>=t1)
     {
-	R_MapPlane (b1,spanstart[b1],x-1);
+	if (((b1 + viewwindowy) & 1) == interlace_field)
+	    R_MapPlane (b1,spanstart[b1],x-1);
 	b1--;
     }
 	
@@ -397,7 +400,7 @@ void R_DrawPlanes (void)
 		    angle = (viewangle + xtoviewangle[x])>>ANGLETOSKYSHIFT;
 		    dc_x = x;
 		    dc_source = R_GetColumn(skytexture, angle);
-		    colfunc ();
+		    basecolfunc();
 		}
 	    }
 	    continue;

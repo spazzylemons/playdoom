@@ -33,6 +33,7 @@ boolean entering_cheat = false;
 extern boolean is_wiping;
 extern boolean cheat_redraw;
 
+#undef CHAR_WIDTH
 #define CHAR_WIDTH 36
 #define NUM_CHARS 37
 #define FULL_WIDTH (CHAR_WIDTH * NUM_CHARS)

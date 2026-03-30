@@ -163,10 +163,7 @@ void D_ConnectNetGame(void)
     // demos.
     //
 
-    if (M_CheckParm("-solo-net") > 0)
-    {
-        netgame = true;
-    }
+    // netgame disabled — Playdate is single-player only.
 }
 
 //

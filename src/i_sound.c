@@ -88,17 +88,27 @@ typedef struct driver_data_s {
 static channel_t channels[NUM_CHANNELS];
 
 static int SoundCallback(void *userdata, int16_t *left, int16_t *right, int length) {
-    length /= 4;
+    // TSF renders at 22050 Hz, Playdate audio runs at 44100 Hz (2x ratio).
+    // Use linear interpolation for smoother upsampling.
+    int written = 0;
 
-    while (length-- > 0) {
-        // Check if we exhausted the buffer
-        if (ring_read == ring_write)
-            return 0;
+    while (written < length) {
+        if (ring_read == ring_write) {
+            // Buffer underrun — fill remaining with silence to avoid garbage.
+            for (int i = written; i < length; i++)
+                left[i] = 0;
+            return written > 0 ? 1 : 0;
+        }
 
-        for (int i = 0; i < 4; i++)
-            *left++ = ring_buffer[ring_read];
+        uint16_t next_read = (ring_read + 1) & (RING_BUFFER_SIZE - 1);
+        int16_t cur = ring_buffer[ring_read];
+        int16_t next = (next_read != ring_write) ? ring_buffer[next_read] : cur;
 
-        ring_read = (ring_read + 1) & (RING_BUFFER_SIZE - 1);
+        // 2x linear interpolation.
+        left[written++] = cur;
+        left[written++] = (int16_t)((cur + next) >> 1);
+
+        ring_read = next_read;
     }
 
     return 1;
@@ -340,7 +350,8 @@ void I_ShutdownMusic(void)
 void I_SetMusicVolume(int volume)
 {
     if (soundfont != NULL)
-        tsf_set_volume(soundfont, volume / 127.0f);
+        // Scale down to reduce clipping from multi-voice MIDI rendering.
+        tsf_set_volume(soundfont, (volume / 127.0f) * 0.85f);
 }
 
 void I_PauseSong(void)

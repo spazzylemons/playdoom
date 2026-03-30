@@ -59,7 +59,7 @@ extern "C" {
 #define TSFDEF extern
 #endif
 
-#define TSF_SAMPLERATE 11025
+#define TSF_SAMPLERATE 22050
 
 // The load functions will return a pointer to a struct tsf which all functions
 // thereafter take as the first parameter.

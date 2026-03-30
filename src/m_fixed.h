@@ -20,6 +20,8 @@
 #ifndef __M_FIXED__
 #define __M_FIXED__
 
+#include <stdint.h>
+
 
 
 
@@ -31,7 +33,11 @@
 
 typedef int fixed_t;
 
-fixed_t FixedMul	(fixed_t a, fixed_t b);
+static inline fixed_t FixedMul(fixed_t a, fixed_t b)
+{
+    return ((int64_t) a * (int64_t) b) >> FRACBITS;
+}
+
 fixed_t FixedDiv	(fixed_t a, fixed_t b);
 
 

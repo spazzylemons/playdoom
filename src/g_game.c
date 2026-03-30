@@ -113,7 +113,7 @@ int             starttime;              // for comparative timing purposes
 boolean         viewactive;
 
 int             deathmatch;               // only if started as net death
-boolean         netgame;                // only true if packets are broadcast
+// netgame is now a compile-time constant (#define false) in doomstat.h
 boolean         playeringame[MAXPLAYERS];
 player_t        players[MAXPLAYERS];
 
@@ -1375,7 +1375,7 @@ void G_DoNewGame (void)
 {
     demoplayback = false;
     netdemo = false;
-    netgame = false;
+    // netgame is compile-time false
     deathmatch = false;
     playeringame[1] = playeringame[2] = playeringame[3] = 0;
     respawnparm = false;
@@ -1825,7 +1825,7 @@ void G_DoPlayDemo (void)
     if (playeringame[1] || M_CheckParm("-solo-net") > 0
                         || M_CheckParm("-netdemo") > 0)
     {
-    netgame = true;
+    // netgame is compile-time false
     netdemo = true;
     }
 
@@ -1895,7 +1895,7 @@ boolean G_CheckDemoStatus (void)
         W_ReleaseLumpName(defdemoname);
     demoplayback = false;
     netdemo = false;
-    netgame = false;
+    // netgame is compile-time false
     deathmatch = false;
     playeringame[1] = playeringame[2] = playeringame[3] = 0;
     respawnparm = false;

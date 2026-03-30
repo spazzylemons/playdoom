@@ -36,6 +36,7 @@
 
 
 #include "r_data.h"
+#include "i_video.h"
 
 //
 // Graphics.
@@ -689,6 +690,7 @@ void R_InitColormaps (void)
     //  256 byte align tables.
     lump = W_GetNumForName("COLORMAP");
     colormaps = W_CacheLumpNum(lump, PU_STATIC);
+    I_RebuildGrayColormaps();
 }
 
 

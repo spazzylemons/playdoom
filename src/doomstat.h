@@ -87,8 +87,9 @@ extern  int             timelimit;
 // Nightmare mode flag, single player.
 extern  boolean         respawnmonsters;
 
-// Netgame? Only true if >1 player.
-extern  boolean	netgame;
+// Playdate is single-player only. Compile-time constant eliminates
+// all netcode branches throughout the engine.
+#define netgame false
 
 // 0=Cooperative; 1=Deathmatch; 2=Altdeath
 extern int deathmatch;
